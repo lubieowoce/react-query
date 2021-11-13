@@ -1,24 +1,31 @@
-import { waitFor, fireEvent } from '@testing-library/react'
-import React from 'react'
+import { waitFor, fireEvent, act } from '@testing-library/react'
+import * as hooks from '@testing-library/react-hooks'
+import React, { useEffect, useState } from 'react'
+import { ErrorBoundary } from 'react-error-boundary'
 
 import * as QueriesObserverModule from '../../core/queriesObserver'
 
 import {
   expectType,
   expectTypeNotAny,
+  mockConsoleError,
   queryKey,
   renderWithClient,
   setActTimeout,
   sleep,
 } from './utils'
 import {
-  useQueries,
+  // useQueries,
   QueryClient,
   UseQueryResult,
   QueryCache,
   QueryObserverResult,
   QueriesObserver,
+  useQueryErrorResetBoundary,
 } from '../..'
+
+import { useQueries } from '../useQueriesSuspense';
+import { useQueries as useQueriesReference } from '../useQueriesReference';
 
 describe('useQueries', () => {
   const queryCache = new QueryCache()
@@ -772,4 +779,473 @@ describe('useQueries', () => {
     await sleep(20)
     QueriesObserverSpy.mockRestore()
   })
+
+  it('should only start enabled queries', async () => {
+    const key1 = queryKey()
+    const key2 = queryKey()
+    const results: UseQueryResult[][] = []
+
+    function Page() {
+      const result = useQueries([
+        {
+          queryKey: key1,
+          queryFn: async () => {
+            await sleep(5)
+            return 1
+          },
+          enabled: false,
+        },
+        {
+          queryKey: key2,
+          queryFn: async () => {
+            await sleep(10)
+            return 2
+          },
+        },
+      ])
+      results.push(result)
+      return null
+    }
+
+    renderWithClient(queryClient, <Page />)
+
+    await sleep(30)
+
+    expect(results.length).toBe(2)
+    expect(results[0]).toMatchObject([{ data: undefined, status: 'idle' }, { data: undefined, status: 'loading' }])
+    expect(results[1]).toMatchObject([{ data: undefined, status: 'idle' }, { data: 2, status: 'success' }])
+  })
+
+  test('[suspense] it should render the correct amount of times', async () => {
+    const key1 = queryKey()
+    const key2 = queryKey()
+    const results: State<UseQueryResult[]>[] = []
+
+    let renders = 0
+    let count1 = 10
+    let count2 = 20
+
+    function Page() {
+      console.log('render', renders++);
+
+      const [stateKey1, setStateKey1] = React.useState(key1)
+      trackSuspense(results, () =>
+        useQueries([
+          {
+            queryKey: stateKey1,
+            queryFn: async () => {
+              count1++
+              await sleep(10)
+              console.log(`queryFn1 [${stateKey1}]`, count1)
+              return count1
+            },
+            suspense: true,
+            // staleTime: Infinity,
+            // ^ this fixes the following scenario:
+            // 1. render, suspend on [A, B] (without mounting), start fetching
+            // 2. finish fetching A
+            // 3. finish fetching B
+            // 4. render
+            //   -  MOUNT <--- instantly start refetching A, because it's considered stale!
+          },
+          {
+            queryKey: key2,
+            queryFn: async () => {
+              count2++
+              await sleep(20)
+              console.log(`queryFn2 [${key2}]`, count2)
+              return count2
+            },
+            suspense: true,
+            // staleTime: Infinity,
+          },
+        ])
+      )
+      return (
+        <button aria-label="toggle" onClick={() => setStateKey1(queryKey())} />
+      )
+    }
+
+    const rendered = renderWithClient(
+      queryClient,
+      <React.Suspense fallback="loading">
+        <Page />
+      </React.Suspense>
+    )
+
+    await sleep(50)
+
+    await waitFor(() => rendered.getByLabelText('toggle'))
+    console.log('updating queryKey1')
+    fireEvent.click(rendered.getByLabelText('toggle'))
+    
+    await sleep(50)
+
+    console.log('last sleep, everything should be done by now')
+    expect(count1).toBe(10+2)
+    expect(count2).toBe(20+1)
+    // expect(renders).toBe(5)
+    // expect(results.length).toBe(3)
+
+    // First load started
+    expect(results[0]).toMatchObject({
+      type: 'suspended',
+    });
+
+    // First load complete
+    expect(results[1]).toMatchObject({
+      type: 'ready', value: [
+        { data: 11, status: 'success' },
+        { data: 21, status: 'success' },
+      ]
+    });
+
+    // Set state - second load started
+    expect(results[2]).toMatchObject({
+      type: 'suspended',
+    });
+
+    // Second load complete
+    expect(results[3]).toMatchObject({
+      type: 'ready', value: [
+        { data: 12, status: 'success' },
+        { data: 21, status: 'success' },
+      ]
+    })
+
+    await flushJestOutput();
+  })
+
+  test('[suspense] it should retry fetch if the reset error boundary has been reset with global hook', async () => {
+    const key1 = queryKey()
+    const key2 = queryKey()
+
+    let succeed = false
+    const consoleMock = mockConsoleError()
+
+    function Page() {
+      const results = useQueries<[string, string]>([
+        {
+          queryKey: key1,
+          queryFn: async () => {
+            await sleep(10)
+            if (!succeed) {
+              throw new Error('Suspense Error Bingo')
+            } else {
+              return 'data1'
+            }
+          },
+          retry: false,
+          suspense: true,
+        },
+        {
+          queryKey: key2,
+          queryFn: () => 'data2',
+          staleTime: Infinity, // don't bother with refetches for this query
+          suspense: true,
+        },
+      ])
+
+      return (
+        <div>
+          <div>data1: {results[0].data}</div>
+          <div>data2: {results[1].data}</div>
+        </div>
+      )
+    }
+
+    function App() {
+      const { reset } = useQueryErrorResetBoundary()
+      return (
+        <ErrorBoundary
+          onReset={reset}
+          fallbackRender={({ resetErrorBoundary }) => (
+            <div>
+              <div>error boundary</div>
+              <button
+                onClick={() => {
+                  resetErrorBoundary()
+                }}
+              >
+                retry
+              </button>
+            </div>
+          )}
+        >
+          <React.Suspense fallback="Loading...">
+            <Page />
+          </React.Suspense>
+        </ErrorBoundary>
+      )
+    }
+
+    const rendered = renderWithClient(queryClient, <App />)
+
+    await waitFor(() => rendered.getByText('Loading...'))
+    await waitFor(() => rendered.getByText('error boundary'))
+    await waitFor(() => rendered.getByText('retry'))
+    console.log('========== RETRYING [1] ===========');
+    fireEvent.click(rendered.getByText('retry'))
+    await waitFor(() => rendered.getByText('error boundary'))
+    await waitFor(() => rendered.getByText('retry'))
+    succeed = true
+    console.log('========== RETRYING [2] ===========');
+    fireEvent.click(rendered.getByText('retry'))
+    await waitFor(() => rendered.getByText('data1: data1'))
+    await waitFor(() => rendered.getByText('data2: data2'))
+    await flushJestOutput();
+
+    consoleMock.mockRestore();
+  })
+
+  test('[suspense] it should keep previous data for variable amounts of useQueries', async () => {
+    const key = queryKey()
+    const states: UseQueryResult[][] = []
+
+    function Page() {
+      const [count, setCount] = React.useState(2)
+      const result = useQueries(
+        Array.from({ length: count }, (_, i) => ({
+          queryKey: [key, count, i + 1],
+          keepPreviousData: true,
+          queryFn: async () => {
+            await sleep(5 * (i + 1))
+            return (i + 1) * count * 2
+          },
+        }))
+      )
+
+      states.push(result)
+
+      React.useEffect(() => {
+        setActTimeout(() => {
+          setCount(prev => prev + 1)
+        }, 20)
+      }, [])
+
+      return null
+    }
+
+    renderWithClient(queryClient, <Page />)
+
+    await waitFor(() => expect(states.length).toBe(8))
+
+    expect(states[0]).toMatchObject([
+      {
+        status: 'loading',
+        data: undefined,
+        isPreviousData: false,
+        isFetching: true,
+      },
+      {
+        status: 'loading',
+        data: undefined,
+        isPreviousData: false,
+        isFetching: true,
+      },
+    ])
+    expect(states[1]).toMatchObject([
+      { status: 'success', data: 4, isPreviousData: false, isFetching: false },
+      {
+        status: 'loading',
+        data: undefined,
+        isPreviousData: false,
+        isFetching: true,
+      },
+    ])
+    expect(states[2]).toMatchObject([
+      { status: 'success', data: 4, isPreviousData: false, isFetching: false },
+      { status: 'success', data: 8, isPreviousData: false, isFetching: false },
+    ])
+
+    expect(states[3]).toMatchObject([
+      { status: 'success', data: 4, isPreviousData: true, isFetching: true },
+      { status: 'success', data: 8, isPreviousData: true, isFetching: true },
+      {
+        status: 'loading',
+        data: undefined,
+        isPreviousData: false,
+        isFetching: true,
+      },
+    ])
+    expect(states[4]).toMatchObject([
+      { status: 'success', data: 4, isPreviousData: true, isFetching: true },
+      { status: 'success', data: 8, isPreviousData: true, isFetching: true },
+      {
+        status: 'loading',
+        data: undefined,
+        isPreviousData: false,
+        isFetching: true,
+      },
+    ])
+    expect(states[5]).toMatchObject([
+      { status: 'success', data: 6, isPreviousData: false, isFetching: false },
+      { status: 'success', data: 8, isPreviousData: true, isFetching: true },
+      {
+        status: 'loading',
+        data: undefined,
+        isPreviousData: false,
+        isFetching: true,
+      },
+    ])
+    expect(states[6]).toMatchObject([
+      { status: 'success', data: 6, isPreviousData: false, isFetching: false },
+      { status: 'success', data: 12, isPreviousData: false, isFetching: false },
+      {
+        status: 'loading',
+        data: undefined,
+        isPreviousData: false,
+        isFetching: true,
+      },
+    ])
+    expect(states[7]).toMatchObject([
+      { status: 'success', data: 6, isPreviousData: false, isFetching: false },
+      { status: 'success', data: 12, isPreviousData: false, isFetching: false },
+      { status: 'success', data: 18, isPreviousData: false, isFetching: false },
+    ])
+  })
+
+  // it.only('blah', async () => {
+  //   let num = 1;
+  //   function useDummy() {
+  //     const [count, setCount] = React.useState(0);
+  //     const [isEnabled, setEnabled] = React.useState(false);
+  //     const mountedRef = React.useRef(false);
+  //     React.useEffect(() => {
+  //       mountedRef.current = true;
+  //       return () => { mountedRef.current = false };
+  //     }, [])
+  //     const query = useQuery(
+  //       {
+  //         queryKey: 'key',
+  //         queryFn: async () => {
+  //           await sleep(100)
+  //           return 'data'+num;
+  //         },
+  //         enabled: isEnabled,
+  //         suspense: true,
+  //       },
+  //     )
+
+  //     return {
+  //       isMounted: mountedRef.current,
+  //       update: () => { setCount(n => n+1) },
+  //       count,
+  //       start: () => { setEnabled(true) },
+  //       refetch: () => { query.refetch() },
+  //       query: query.data,
+  //     };
+  //   }
+  //   const states: any[] = []
+  //   const client = new QueryClient()
+  //   const rendered = hooks.renderHook(
+  //     () => trackSuspense(states, useDummy), {
+  //       wrapper: ({children}) =>
+  //         <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  //     }
+  //   );
+  //   rendered.rerender();
+  //   expect(rendered.result.current.isMounted).toBe(true);
+  //   hooks.act(() => { rendered.result.current.start() });
+  //   console.log('after suspending', rendered.result.current.isMounted)
+  //   hooks.act(() => { rendered.result.current.update() });
+  //   hooks.act(() => { rendered.result.current.update() });
+  //   hooks.act(() => { rendered.result.current.update() });
+  //   console.log('before resuming', rendered.result.current.count)
+  //   await sleep(110);
+  //   console.log('after resuming', rendered.result.current.count);
+  //   num++;
+  //   rendered.rerender();
+  //   hooks.act(() => { rendered.result.current.refetch() });
+
+  //   await sleep(110);
+  //   states.map((s) => console.log(s));
+  // })
+
+  test.each([
+    ['reference', useQueriesReference],
+    ['real', useQueries],
+  ])('[suspense] should call onSuccess after the missing queries have been fetched {%s}', async (_name, useQueriesImpl) => {
+    const key1 = queryKey()
+    const key2 = queryKey()
+    const states: State<UseQueryResult[]>[] = []
+    const onSuccess1 = jest.fn()
+    const onSuccess2 = jest.fn()
+
+    function Page() {
+      trackSuspense(states, () =>
+        useQueriesImpl([
+          { queryKey: key1, queryFn: async () => { await sleep(10); return 'data1' }, onSuccess: onSuccess1, suspense: true },
+          { queryKey: key2, queryFn: async () => { await sleep(20); return 'data2' }, onSuccess: onSuccess2, suspense: true},
+        ])
+      )
+      return null
+    }
+
+    renderWithClient(queryClient, <React.Suspense fallback="suspended"><Page /></React.Suspense>)
+
+    await act(() => sleep(20+1));
+    expect(onSuccess1).toHaveBeenCalledTimes(1)
+    expect(onSuccess1).toHaveBeenCalledWith('data1')
+    expect(onSuccess2).toHaveBeenCalledTimes(1)
+    expect(onSuccess2).toHaveBeenCalledWith('data2')
+  })
+  test.each([
+    ['reference', useQueriesReference],
+    ['real', useQueries],
+  ])('[suspense] should call onError after the missing queries have been fetched {%s}', async (_name, useQueriesImpl) => {
+    const key1 = queryKey()
+    const key2 = queryKey()
+    const states: State<UseQueryResult[]>[] = []
+    const onError1 = jest.fn()
+    const onError2 = jest.fn()
+
+    function Page() {
+      trackSuspense(states, () =>
+        useQueriesImpl([
+          { queryKey: key1, queryFn: async () => { await sleep(10); throw 'error1' }, onError: onError1, suspense: true },
+          { queryKey: key2, queryFn: async () => { await sleep(20); throw 'error2' }, onError: onError2, suspense: true},
+        ])
+      )
+      return null
+    }
+
+    renderWithClient(queryClient, <React.Suspense fallback="suspended"><Page /></React.Suspense>)
+
+    await act(() => sleep(20+1));
+    expect(onError1).toHaveBeenCalledTimes(1)
+    expect(onError1).toHaveBeenCalledWith('error1')
+    expect(onError2).toHaveBeenCalledTimes(1)
+    expect(onError2).toHaveBeenCalledWith('error2')
+  })
 })
+
+type State<T> =
+  | { type: 'suspended' }
+  | { type: 'ready', value: T }
+  | { type: 'error' }
+
+const trackSuspense = <T,>(results: State<T>[], body: () => T) => {
+  const track = (result: any) => (results.push(result), console.log(`trackSuspense @ ${Date.now()}`, result));
+  try {
+    const result = body();
+    track({ type: 'ready', value: result })
+    return result
+  } catch (thrown) {
+    if (thrown instanceof Promise) {
+      track({ type: 'suspended' });
+    } else {
+      track({ type: 'error' })
+    }
+    throw thrown;
+  }
+}
+
+const flushJestOutput = async () => {
+  let isFirstRun = true
+  await waitFor(() => {
+    const isFirstRun_ = isFirstRun;
+    isFirstRun = false;
+    expect(isFirstRun_).toBe(false)
+  });
+}

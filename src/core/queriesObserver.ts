@@ -11,7 +11,7 @@ export class QueriesObserver extends Subscribable<QueriesObserverListener> {
   private client: QueryClient
   private result: QueryObserverResult[]
   private queries: QueryObserverOptions[]
-  private observers: QueryObserver[]
+  observers: QueryObserver[]
   private observersMap: Record<string, QueryObserver>
 
   constructor(client: QueryClient, queries?: QueryObserverOptions[]) {
@@ -70,6 +70,28 @@ export class QueriesObserver extends Subscribable<QueriesObserverListener> {
         defaultedOptions
       )
     })
+  }
+
+  fetchOptimistic(queries: QueryObserverOptions[])/*: Promise<(QueryObserverResult | null)[]> */ {
+    return Promise.allSettled(
+      queries.map((options, index) => {
+        const defaultedOptions = this.client.defaultQueryObserverOptions(options)
+        const observer = this.getObserver(defaultedOptions, index)
+        const { isLoading } = observer.getOptimisticResult(options)
+        return isLoading ? observer.fetchOptimistic(options) : Promise.resolve(null);
+      })
+    )
+  }
+
+  retryFailed(queries: QueryObserverOptions[])/*: Promise<(QueryObserverResult | null)[]> */ {
+    return Promise.allSettled(
+      queries.map((options, index) => {
+        const defaultedOptions = this.client.defaultQueryObserverOptions(options)
+        const observer = this.getObserver(defaultedOptions, index)
+        const { isError } = observer.getOptimisticResult(options)
+        return isError ? observer.fetchOptimistic(options) : Promise.resolve(null);
+      })
+    )
   }
 
   private getObserver(
