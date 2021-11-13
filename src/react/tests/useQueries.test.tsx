@@ -15,7 +15,7 @@ import {
   sleep,
 } from './utils'
 import {
-  // useQueries,
+  useQueries,
   QueryClient,
   UseQueryResult,
   QueryCache,
@@ -24,7 +24,6 @@ import {
   useQueryErrorResetBoundary,
 } from '../..'
 
-import { useQueries } from '../useQueriesSuspense';
 import { useQueries as useQueriesReference } from '../useQueriesReference';
 
 describe('useQueries', () => {
