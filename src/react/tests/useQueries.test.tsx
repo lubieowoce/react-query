@@ -1,4 +1,4 @@
-import React from 'react';
+import React from 'react'
 import { waitFor, fireEvent, act } from '@testing-library/react'
 import { ErrorBoundary } from 'react-error-boundary'
 
@@ -808,8 +808,14 @@ describe('useQueries', () => {
     await sleep(30)
 
     expect(results.length).toBe(2)
-    expect(results[0]).toMatchObject([{ data: undefined, status: 'idle' }, { data: undefined, status: 'loading' }])
-    expect(results[1]).toMatchObject([{ data: undefined, status: 'idle' }, { data: 2, status: 'success' }])
+    expect(results[0]).toMatchObject([
+      { data: undefined, status: 'idle' },
+      { data: undefined, status: 'loading' },
+    ])
+    expect(results[1]).toMatchObject([
+      { data: undefined, status: 'idle' },
+      { data: 2, status: 'success' },
+    ])
   })
 
   test('[suspense] it should render the correct amount of times', async () => {
@@ -823,6 +829,7 @@ describe('useQueries', () => {
     function Page() {
       const [stateKey1, setStateKey1] = React.useState(key1)
       trackSuspense(results, () =>
+        // eslint-disable-next-line react-hooks/rules-of-hooks
         useQueries([
           {
             queryKey: stateKey1,
@@ -868,49 +875,52 @@ describe('useQueries', () => {
 
     await waitFor(() => rendered.getByLabelText('toggle'))
     fireEvent.click(rendered.getByLabelText('toggle'))
-    
+
     await sleep(50)
 
-    expect(count1).toBe(10+2)
-    expect(count2).toBe(20+1)
+    expect(count1).toBe(10 + 2)
+    expect(count2).toBe(20 + 1)
 
     // First load started
     expect(results[0]).toMatchObject({
       type: 'suspended',
-    });
+    })
 
     // First load complete
     expect(results[1]).toMatchObject({
-      type: 'ready', value: [
+      type: 'ready',
+      value: [
         { data: 11, status: 'success' },
         { data: 21, status: 'success' },
-      ]
-    });
+      ],
+    })
 
     // Set state - second load started
     expect(results[2]).toMatchObject({
       type: 'suspended',
-    });
+    })
 
     // Second load complete
     expect(results[3]).toMatchObject({
-      type: 'ready', value: [
+      type: 'ready',
+      value: [
         { data: 12, status: 'success' },
         { data: 21, status: 'success' },
-      ]
+      ],
     })
 
     // Not sure what's causing this one
     expect(results[4]).toMatchObject({
-      type: 'ready', value: [
+      type: 'ready',
+      value: [
         { data: 12, status: 'success' },
         { data: 21, status: 'success' },
-      ]
+      ],
     })
 
     expect(results.length).toBe(5)
 
-    await flushJestOutput();
+    await flushJestOutput()
   })
 
   test('[suspense] it should retry fetch if the reset error boundary has been reset with global hook', async () => {
@@ -988,9 +998,9 @@ describe('useQueries', () => {
     fireEvent.click(rendered.getByText('retry'))
     await waitFor(() => rendered.getByText('data1: data1'))
     await waitFor(() => rendered.getByText('data2: data2'))
-    await flushJestOutput();
+    await flushJestOutput()
 
-    consoleMock.mockRestore();
+    consoleMock.mockRestore()
   })
 
   test('[suspense] it should keep previous data for variable amounts of useQueries', async () => {
@@ -1109,17 +1119,39 @@ describe('useQueries', () => {
 
     function Page() {
       trackSuspense(states, () =>
+        // eslint-disable-next-line react-hooks/rules-of-hooks
         useQueries([
-          { queryKey: key1, queryFn: async () => { await sleep(10); return 'data1' }, onSuccess: onSuccess1, suspense: true },
-          { queryKey: key2, queryFn: async () => { await sleep(20); return 'data2' }, onSuccess: onSuccess2, suspense: true},
+          {
+            queryKey: key1,
+            queryFn: async () => {
+              await sleep(10)
+              return 'data1'
+            },
+            onSuccess: onSuccess1,
+            suspense: true,
+          },
+          {
+            queryKey: key2,
+            queryFn: async () => {
+              await sleep(20)
+              return 'data2'
+            },
+            onSuccess: onSuccess2,
+            suspense: true,
+          },
         ])
       )
       return null
     }
 
-    renderWithClient(queryClient, <React.Suspense fallback="suspended"><Page /></React.Suspense>)
+    renderWithClient(
+      queryClient,
+      <React.Suspense fallback="suspended">
+        <Page />
+      </React.Suspense>
+    )
 
-    await act(() => sleep(20+1));
+    await act(() => sleep(20 + 1))
     expect(onSuccess1).toHaveBeenCalledTimes(1)
     expect(onSuccess1).toHaveBeenCalledWith('data1')
     expect(onSuccess2).toHaveBeenCalledTimes(1)
@@ -1128,56 +1160,83 @@ describe('useQueries', () => {
   test('[suspense] should call onError after the missing queries have been fetched', async () => {
     const key1 = queryKey()
     const key2 = queryKey()
+    const error1 = 'error1'
+    const error2 = 'error2'
     const states: State<UseQueryResult[]>[] = []
     const onError1 = jest.fn()
     const onError2 = jest.fn()
 
     function Page() {
       trackSuspense(states, () =>
+        // eslint-disable-next-line react-hooks/rules-of-hooks
         useQueries([
-          { queryKey: key1, queryFn: async () => { await sleep(10); throw 'error1' }, onError: onError1, suspense: true },
-          { queryKey: key2, queryFn: async () => { await sleep(20); throw 'error2' }, onError: onError2, suspense: true},
+          {
+            queryKey: key1,
+            queryFn: async () => {
+              await sleep(10)
+              throw error1
+            },
+            onError: onError1,
+            suspense: true,
+          },
+          {
+            queryKey: key2,
+            queryFn: async () => {
+              await sleep(20)
+              throw error2
+            },
+            onError: onError2,
+            suspense: true,
+          },
         ])
       )
       return null
     }
 
-    renderWithClient(queryClient, <React.Suspense fallback="suspended"><Page /></React.Suspense>)
+    renderWithClient(
+      queryClient,
+      <React.Suspense fallback="suspended">
+        <Page />
+      </React.Suspense>
+    )
 
-    await act(() => sleep(20+1));
+    await act(() => sleep(20 + 1))
     expect(onError1).toHaveBeenCalledTimes(1)
-    expect(onError1).toHaveBeenCalledWith('error1')
+    expect(onError1).toHaveBeenCalledWith(error1)
     expect(onError2).toHaveBeenCalledTimes(1)
-    expect(onError2).toHaveBeenCalledWith('error2')
+    expect(onError2).toHaveBeenCalledWith(error2)
   })
 })
 
 type State<T> =
   | { type: 'suspended' }
-  | { type: 'ready', value: T }
+  | { type: 'ready'; value: T }
   | { type: 'error' }
 
 const trackSuspense = <T,>(results: State<T>[], body: () => T) => {
-  const track = (result: any) => { results.push(result); return result; };
+  const track = (result: any) => {
+    results.push(result)
+    return result
+  }
   try {
-    const result = body();
+    const result = body()
     track({ type: 'ready', value: result })
     return result
   } catch (thrown) {
     if (thrown instanceof Promise) {
-      track({ type: 'suspended' });
+      track({ type: 'suspended' })
     } else {
       track({ type: 'error' })
     }
-    throw thrown;
+    throw thrown
   }
 }
 
 const flushJestOutput = async () => {
   let isFirstRun = true
   await waitFor(() => {
-    const isFirstRun_ = isFirstRun;
-    isFirstRun = false;
+    const isFirstRun_ = isFirstRun
+    isFirstRun = false
     expect(isFirstRun_).toBe(false)
-  });
+  })
 }

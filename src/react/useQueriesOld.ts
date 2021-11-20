@@ -4,8 +4,7 @@ import { notifyManager } from '../core/notifyManager'
 import { QueriesObserver } from '../core/queriesObserver'
 import { useQueryClient } from './QueryClientProvider'
 
-import type { QueriesOptions, QueriesResults } from './useQueries';
-
+import type { QueriesOptions, QueriesResults } from './useQueries'
 
 export function useQueries<T extends any[]>(
   queries: readonly [...QueriesOptions<T>]

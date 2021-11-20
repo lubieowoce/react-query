@@ -7,7 +7,6 @@ import { useQueryClient } from './QueryClientProvider'
 import { UseQueryOptions, UseQueryResult } from './types'
 import { useQueryErrorResetBoundary } from './QueryErrorResetBoundary'
 
-
 // Avoid TS depth-limit error in case of large array literal
 type MAXIMUM_DEPTH = 20
 
@@ -126,20 +125,20 @@ export function useQueries<T extends any[]>(
 
     // Make sure the results are already in fetching state before subscribing or updating options
     defaultedOptions.optimisticResults = true
-    return defaultedOptions;
-  });
+    return defaultedOptions
+  })
 
   // Make suspense and useErrorBoundary the same for all queries
   // TODO: allow & handle mixed values
   const isSuspense = defaultedQueries.some(q => q.suspense)
   const isUseErrorBoundary = defaultedQueries.some(q => q.useErrorBoundary)
 
-  defaultedQueries.forEach((defaultedOptions) => {
+  defaultedQueries.forEach(defaultedOptions => {
     if (isSuspense) {
-      defaultedOptions.suspense = true;
+      defaultedOptions.suspense = true
     }
     if (isUseErrorBoundary) {
-      defaultedOptions.useErrorBoundary = true;
+      defaultedOptions.useErrorBoundary = true
     }
 
     if (defaultedOptions.suspense) {
@@ -150,7 +149,7 @@ export function useQueries<T extends any[]>(
         // defaultedOptions.staleTime = Infinity
         defaultedOptions.staleTime = 1000
       }
-      defaultedOptions.refetchOnMount = false;
+      defaultedOptions.refetchOnMount = false
     }
 
     if (defaultedOptions.suspense || defaultedOptions.useErrorBoundary) {
@@ -169,12 +168,11 @@ export function useQueries<T extends any[]>(
 
   const result = observer.getOptimisticResult(defaultedQueries)
 
-
   React.useEffect(() => {
     // Do not notify on updates because of changes in the options because
     // these changes should already be reflected in the optimistic result.
     observer.setQueries(defaultedQueries, { listeners: false })
-  }, [defaultedQueries])
+  }, [observer, defaultedQueries])
 
   // TODO: should "first" mean chronologically first? as in
   //   minBy(result.filter(r => r.isError), (r) => r.errorUpdatedAt)
@@ -200,46 +198,49 @@ export function useQueries<T extends any[]>(
     }
   }, [observer])
 
-  type DoFetch = (observer: QueriesObserver) => ReturnType<QueriesObserver['fetchOptimistic']>
+  type DoFetch = (
+    observer: QueriesObserver
+  ) => ReturnType<QueriesObserver['fetchOptimistic']>
   const suspend = (doFetch: DoFetch) => {
     const unsubscribe = observer.subscribe()
-    const promise = doFetch(observer).then((partialResults) => {
-      partialResults.forEach((settledRes, i) => {
-        const defaultedQuery = defaultedQueries[i]!;
-        if (settledRes.status === 'fulfilled') {
-          const res = settledRes.value;
-          if (res === null) {
-            // Wasn't fetched, no need to update anything
-            return;
+    const promise = doFetch(observer)
+      .then(partialResults => {
+        partialResults.forEach((settledRes, i) => {
+          const defaultedQuery = defaultedQueries[i]!
+          if (settledRes.status === 'fulfilled') {
+            const res = settledRes.value
+            if (res === null) {
+              // Wasn't fetched, no need to update anything
+              return
+            }
+            defaultedQuery.onSuccess?.(res.data)
+            defaultedQuery.onSettled?.(res.data, undefined)
+          } else if (settledRes.status === 'rejected') {
+            const error = settledRes.reason
+            errorResetBoundary.clearReset()
+            defaultedQuery.onError?.(error)
+            defaultedQuery.onSettled?.(undefined, error)
           }
-          defaultedQuery.onSuccess?.(res.data);
-          defaultedQuery.onSettled?.(res.data, undefined)
-        } else if (settledRes.status === 'rejected') {
-          const error = settledRes.reason;
-          errorResetBoundary.clearReset();
-          defaultedQuery.onError?.(error);
-          defaultedQuery.onSettled?.(undefined, error)
-        }
+        })
       })
-    })
-      .catch((err) => console.error(err))
-      .finally(unsubscribe);
-    throw promise;
+      .catch(err => console.error(err))
+      .finally(unsubscribe)
+    throw promise
   }
 
   // Handle suspense and error boundaries
   if (isSuspense || isUseErrorBoundary) {
     if (someError) {
       if (errorResetBoundary.isReset()) {
-        suspend((observer) => observer.fetchOptimistic(defaultedQueries));
+        suspend(observer => observer.fetchOptimistic(defaultedQueries))
       } else {
-        errorResetBoundary.clearReset();
-        throw someError;
+        errorResetBoundary.clearReset()
+        throw someError
       }
     }
 
     if (isSuspense && someIsLoading) {
-      suspend((observer) => observer.fetchOptimistic(defaultedQueries));
+      suspend(observer => observer.fetchOptimistic(defaultedQueries))
     }
   }
 

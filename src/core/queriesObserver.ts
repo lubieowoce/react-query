@@ -75,10 +75,14 @@ export class QueriesObserver extends Subscribable<QueriesObserverListener> {
   fetchOptimistic(queries: QueryObserverOptions[]) {
     return Promise.allSettled(
       queries.map((options, index) => {
-        const defaultedOptions = this.client.defaultQueryObserverOptions(options)
+        const defaultedOptions = this.client.defaultQueryObserverOptions(
+          options
+        )
         const observer = this.getObserver(defaultedOptions, index)
         const { isLoading } = observer.getOptimisticResult(options)
-        return isLoading ? observer.fetchOptimistic(options) : Promise.resolve(null);
+        return isLoading
+          ? observer.fetchOptimistic(options)
+          : Promise.resolve(null)
       })
     )
   }
