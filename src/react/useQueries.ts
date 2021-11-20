@@ -115,11 +115,6 @@ export type QueriesResults<
 export function useQueries<T extends any[]>(
   queries: readonly [...QueriesOptions<T>]
 ): QueriesResults<T> {
-  console.log([
-    '######################################################',
-    '##################### useQueries #####################',
-    '######################################################',
-  ].join('\n'))
   const mountedRef = React.useRef(false)
   const [, forceUpdate] = React.useState(0)
 
@@ -173,7 +168,6 @@ export function useQueries<T extends any[]>(
   )
 
   const result = observer.getOptimisticResult(defaultedQueries)
-  console.log('useQueries :: optimisticResult', defaultedQueries.map((q, i) => ({ key: q.queryKey, status: result[i]!.status })))
 
 
   React.useEffect(() => {
@@ -190,20 +184,17 @@ export function useQueries<T extends any[]>(
 
   React.useEffect(() => {
     mountedRef.current = true
-    console.log('mounting >>>>>>')
     const unsubscribe = observer.subscribe(
       notifyManager.batchCalls(() => {
         // TODO: will this trigger an unnecessary rerender
         // if we suspend after mount?
         if (mountedRef.current) {
-          console.log('useQueries :: observer notification - forcing update')
           forceUpdate(x => x + 1)
         }
       })
     )
 
     return () => {
-      console.log('unmounting <<<<<<<')
       mountedRef.current = false
       unsubscribe()
     }
@@ -211,10 +202,8 @@ export function useQueries<T extends any[]>(
 
   type DoFetch = (observer: QueriesObserver) => ReturnType<QueriesObserver['fetchOptimistic']>
   const suspend = (doFetch: DoFetch) => {
-    console.log('useQueries :: suspending', defaultedQueries.map((q, i) => ({ key: q.queryKey, status: result[i]!.status })))
     const unsubscribe = observer.subscribe()
     const promise = doFetch(observer).then((partialResults) => {
-      console.log('useQueries :: promise done. partialResults', partialResults.map((r) => r && r.status))
       partialResults.forEach((settledRes, i) => {
         const defaultedQuery = defaultedQueries[i]!;
         if (settledRes.status === 'fulfilled') {
@@ -233,7 +222,7 @@ export function useQueries<T extends any[]>(
         }
       })
     })
-      .catch((err) => console.log('useQueries :: caught from suspension promise', err))
+      .catch((err) => console.error(err))
       .finally(unsubscribe);
     throw promise;
   }
@@ -242,17 +231,14 @@ export function useQueries<T extends any[]>(
   if (isSuspense || isUseErrorBoundary) {
     if (someError) {
       if (errorResetBoundary.isReset()) {
-        console.log('useQueries :: refetching (error boundary reset)')
         suspend((observer) => observer.fetchOptimistic(defaultedQueries));
       } else {
-        console.log('useQueries :: throwing error')
         errorResetBoundary.clearReset();
         throw someError;
       }
     }
 
     if (isSuspense && someIsLoading) {
-      console.log('useQueries :: fetching')
       suspend((observer) => observer.fetchOptimistic(defaultedQueries));
     }
   }

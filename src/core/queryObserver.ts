@@ -327,7 +327,6 @@ export class QueryObserver<
   ): Promise<TQueryData | undefined> {
     // Make sure we reference the latest query as the current one might have been removed
     this.updateQuery()
-    console.log('QueryObserver.executeFetch', this.options.queryKey);
 
     // Fetch
     let promise: Promise<TQueryData | undefined> = this.currentQuery.fetch(
@@ -458,18 +457,6 @@ export class QueryObserver<
         mounted && shouldFetchOptionally(query, prevQuery, options, prevOptions)
 
       if (fetchOnMount || fetchOptionally) {
-        console.log(
-          'createResult :: optimistic', { realStatus: status, newStatus: 'loading' },
-          { fetchOnMount,
-            mounted,
-            shouldFetchOnMount: shouldFetchOnMount(query, options),
-            shouldLoadOnMount: shouldLoadOnMount(query, options as any),
-            shouldLoadOnMount_parts: {
-              time: !query.state.dataUpdatedAt,
-              retry: !(query.state.status === 'error' && options.retryOnMount === false),
-            },
-            shouldRefetchOnMount: shouldRefetchOnMount(query, options as any),
-          })
         isFetching = true
         if (!dataUpdatedAt) {
           status = 'loading'

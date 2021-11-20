@@ -822,7 +822,7 @@ describe('useQueries', () => {
     let count2 = 20
 
     function Page() {
-      console.log('render', renders++);
+      renders++;
 
       const [stateKey1, setStateKey1] = React.useState(key1)
       trackSuspense(results, () =>
@@ -832,7 +832,6 @@ describe('useQueries', () => {
             queryFn: async () => {
               count1++
               await sleep(10)
-              console.log(`queryFn1 [${stateKey1}]`, count1)
               return count1
             },
             suspense: true,
@@ -849,7 +848,6 @@ describe('useQueries', () => {
             queryFn: async () => {
               count2++
               await sleep(20)
-              console.log(`queryFn2 [${key2}]`, count2)
               return count2
             },
             suspense: true,
@@ -872,12 +870,10 @@ describe('useQueries', () => {
     await sleep(50)
 
     await waitFor(() => rendered.getByLabelText('toggle'))
-    console.log('updating queryKey1')
     fireEvent.click(rendered.getByLabelText('toggle'))
     
     await sleep(50)
 
-    console.log('last sleep, everything should be done by now')
     expect(count1).toBe(10+2)
     expect(count2).toBe(20+1)
     // expect(renders).toBe(5)
@@ -980,12 +976,10 @@ describe('useQueries', () => {
     await waitFor(() => rendered.getByText('Loading...'))
     await waitFor(() => rendered.getByText('error boundary'))
     await waitFor(() => rendered.getByText('retry'))
-    console.log('========== RETRYING [1] ===========');
     fireEvent.click(rendered.getByText('retry'))
     await waitFor(() => rendered.getByText('error boundary'))
     await waitFor(() => rendered.getByText('retry'))
     succeed = true
-    console.log('========== RETRYING [2] ===========');
     fireEvent.click(rendered.getByText('retry'))
     await waitFor(() => rendered.getByText('data1: data1'))
     await waitFor(() => rendered.getByText('data2: data2'))
@@ -1159,7 +1153,7 @@ type State<T> =
   | { type: 'error' }
 
 const trackSuspense = <T,>(results: State<T>[], body: () => T) => {
-  const track = (result: any) => (results.push(result), console.log(`trackSuspense @ ${Date.now()}`, result));
+  const track = (result: any) => { results.push(result); return result; };
   try {
     const result = body();
     track({ type: 'ready', value: result })
