@@ -198,12 +198,10 @@ export function useQueries<T extends any[]>(
     }
   }, [observer])
 
-  type DoFetch = (
-    observer: QueriesObserver
-  ) => ReturnType<QueriesObserver['fetchOptimistic']>
-  const suspend = (doFetch: DoFetch) => {
+  const suspend = () => {
     const unsubscribe = observer.subscribe()
-    const promise = doFetch(observer)
+    const promise = observer
+      .fetchOptimistic(defaultedQueries)
       .then(partialResults => {
         partialResults.forEach((settledRes, i) => {
           const defaultedQuery = defaultedQueries[i]!
@@ -232,7 +230,7 @@ export function useQueries<T extends any[]>(
   if (isSuspense || isUseErrorBoundary) {
     if (someError) {
       if (errorResetBoundary.isReset()) {
-        suspend(observer => observer.fetchOptimistic(defaultedQueries))
+        suspend()
       } else {
         errorResetBoundary.clearReset()
         throw someError
@@ -240,7 +238,7 @@ export function useQueries<T extends any[]>(
     }
 
     if (isSuspense && someIsLoading) {
-      suspend(observer => observer.fetchOptimistic(defaultedQueries))
+      suspend()
     }
   }
 
