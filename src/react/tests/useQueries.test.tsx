@@ -1,6 +1,5 @@
+import React from 'react';
 import { waitFor, fireEvent, act } from '@testing-library/react'
-import * as hooks from '@testing-library/react-hooks'
-import React, { useEffect, useState } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
 
 import * as QueriesObserverModule from '../../core/queriesObserver'
@@ -23,8 +22,6 @@ import {
   QueriesObserver,
   useQueryErrorResetBoundary,
 } from '../..'
-
-import { useQueries as useQueriesReference } from '../useQueriesReference';
 
 describe('useQueries', () => {
   const queryCache = new QueryCache()
@@ -1104,67 +1101,7 @@ describe('useQueries', () => {
     ])
   })
 
-  // it.only('blah', async () => {
-  //   let num = 1;
-  //   function useDummy() {
-  //     const [count, setCount] = React.useState(0);
-  //     const [isEnabled, setEnabled] = React.useState(false);
-  //     const mountedRef = React.useRef(false);
-  //     React.useEffect(() => {
-  //       mountedRef.current = true;
-  //       return () => { mountedRef.current = false };
-  //     }, [])
-  //     const query = useQuery(
-  //       {
-  //         queryKey: 'key',
-  //         queryFn: async () => {
-  //           await sleep(100)
-  //           return 'data'+num;
-  //         },
-  //         enabled: isEnabled,
-  //         suspense: true,
-  //       },
-  //     )
-
-  //     return {
-  //       isMounted: mountedRef.current,
-  //       update: () => { setCount(n => n+1) },
-  //       count,
-  //       start: () => { setEnabled(true) },
-  //       refetch: () => { query.refetch() },
-  //       query: query.data,
-  //     };
-  //   }
-  //   const states: any[] = []
-  //   const client = new QueryClient()
-  //   const rendered = hooks.renderHook(
-  //     () => trackSuspense(states, useDummy), {
-  //       wrapper: ({children}) =>
-  //         <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  //     }
-  //   );
-  //   rendered.rerender();
-  //   expect(rendered.result.current.isMounted).toBe(true);
-  //   hooks.act(() => { rendered.result.current.start() });
-  //   console.log('after suspending', rendered.result.current.isMounted)
-  //   hooks.act(() => { rendered.result.current.update() });
-  //   hooks.act(() => { rendered.result.current.update() });
-  //   hooks.act(() => { rendered.result.current.update() });
-  //   console.log('before resuming', rendered.result.current.count)
-  //   await sleep(110);
-  //   console.log('after resuming', rendered.result.current.count);
-  //   num++;
-  //   rendered.rerender();
-  //   hooks.act(() => { rendered.result.current.refetch() });
-
-  //   await sleep(110);
-  //   states.map((s) => console.log(s));
-  // })
-
-  test.each([
-    ['reference', useQueriesReference],
-    ['real', useQueries],
-  ])('[suspense] should call onSuccess after the missing queries have been fetched {%s}', async (_name, useQueriesImpl) => {
+  test('[suspense] should call onSuccess after the missing queries have been fetched', async () => {
     const key1 = queryKey()
     const key2 = queryKey()
     const states: State<UseQueryResult[]>[] = []
@@ -1173,7 +1110,7 @@ describe('useQueries', () => {
 
     function Page() {
       trackSuspense(states, () =>
-        useQueriesImpl([
+        useQueries([
           { queryKey: key1, queryFn: async () => { await sleep(10); return 'data1' }, onSuccess: onSuccess1, suspense: true },
           { queryKey: key2, queryFn: async () => { await sleep(20); return 'data2' }, onSuccess: onSuccess2, suspense: true},
         ])
@@ -1189,10 +1126,7 @@ describe('useQueries', () => {
     expect(onSuccess2).toHaveBeenCalledTimes(1)
     expect(onSuccess2).toHaveBeenCalledWith('data2')
   })
-  test.each([
-    ['reference', useQueriesReference],
-    ['real', useQueries],
-  ])('[suspense] should call onError after the missing queries have been fetched {%s}', async (_name, useQueriesImpl) => {
+  test('[suspense] should call onError after the missing queries have been fetched', async () => {
     const key1 = queryKey()
     const key2 = queryKey()
     const states: State<UseQueryResult[]>[] = []
@@ -1201,7 +1135,7 @@ describe('useQueries', () => {
 
     function Page() {
       trackSuspense(states, () =>
-        useQueriesImpl([
+        useQueries([
           { queryKey: key1, queryFn: async () => { await sleep(10); throw 'error1' }, onError: onError1, suspense: true },
           { queryKey: key2, queryFn: async () => { await sleep(20); throw 'error2' }, onError: onError2, suspense: true},
         ])
